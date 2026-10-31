@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
 import { ButtonLink } from "@/components/ui/button";
@@ -37,8 +37,68 @@ const destinations = [
 
 const popularDestinations = ["Goa", "Kyoto", "Amalfi Coast", "Varanasi", "Bali"];
 
+function getLocalDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDate(date: string) {
+  if (!date) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${date}T00:00:00`));
+}
+
 export default function Home() {
   const [destination, setDestination] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const datePickerRef = useRef<HTMLDivElement>(null);
+  const today = getLocalDateString(new Date());
+
+  useEffect(() => {
+    if (!isDatePickerOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !datePickerRef.current?.contains(event.target)
+      ) {
+        setIsDatePickerOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDatePickerOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDatePickerOpen]);
+
+  const dateSummary =
+    startDate && endDate
+      ? `${formatDate(startDate)} – ${formatDate(endDate)}`
+      : startDate
+        ? `${formatDate(startDate)} – Choose return`
+        : "Add your dates";
 
   return (
     <>
@@ -82,27 +142,113 @@ export default function Home() {
 
                   <div className="hidden h-10 w-px bg-surface-container-highest md:block" />
 
-                  <label className="flex min-h-14 w-full flex-1 cursor-text items-center gap-3 rounded-xl border border-surface-container-highest bg-surface-container-low px-3 py-2 text-left transition-colors hover:bg-surface-container focus-within:border-primary-container focus-within:ring-1 focus-within:ring-primary-container">
-                    <MaterialIcon
-                      className="select-none text-[22px] text-secondary"
-                      name="calendar_month"
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-secondary">
-                        Travel dates
-                      </span>
-                      <input
-                        className="h-6 w-full cursor-text bg-transparent font-body-lg text-body-lg leading-6 text-on-surface placeholder:text-secondary focus:outline-none"
-                        id="dates-trigger"
-                        placeholder="Add your dates"
-                        type="text"
+                  <div className="relative w-full flex-1" ref={datePickerRef}>
+                    <button
+                      aria-controls="travel-date-picker"
+                      aria-expanded={isDatePickerOpen}
+                      aria-haspopup="dialog"
+                      className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-surface-container-highest bg-surface-container-low px-3 py-2 text-left transition-colors hover:bg-surface-container focus-visible:border-primary-container focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-container"
+                      onClick={() => setIsDatePickerOpen((open) => !open)}
+                      type="button"
+                    >
+                      <MaterialIcon
+                        className="select-none text-[22px] text-secondary"
+                        name="calendar_month"
                       />
-                    </span>
-                  </label>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-secondary">
+                          Travel dates
+                        </span>
+                        <span
+                          className={`truncate font-body-lg text-body-lg leading-6 ${
+                            startDate ? "text-on-surface" : "text-secondary"
+                          }`}
+                        >
+                          {dateSummary}
+                        </span>
+                      </span>
+                    </button>
+
+                    {isDatePickerOpen ? (
+                      <div
+                        aria-label="Choose your travel dates"
+                        className="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-surface-container-highest bg-surface-container-lowest p-4 text-left shadow-xl"
+                        id="travel-date-picker"
+                        role="dialog"
+                      >
+                        <div>
+                          <p className="font-label-lg text-label-lg font-semibold text-on-surface">
+                            When are you going?
+                          </p>
+                          <p className="mt-1 font-body-sm text-body-sm text-secondary">
+                            Choose your arrival and return dates.
+                          </p>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
+                          <label className="flex flex-col gap-1.5 font-label-sm text-label-sm font-semibold text-secondary">
+                            From
+                            <input
+                              className="h-11 min-w-0 rounded-lg border border-surface-container-highest bg-surface-container-low px-2 font-body-md text-body-md text-on-surface focus:border-primary-container focus:outline-none focus:ring-1 focus:ring-primary-container"
+                              max={endDate || undefined}
+                              min={today}
+                              onChange={(event) => {
+                                const nextStartDate = event.target.value;
+                                setStartDate(nextStartDate);
+                                if (endDate && endDate < nextStartDate) {
+                                  setEndDate("");
+                                }
+                              }}
+                              type="date"
+                              value={startDate}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1.5 font-label-sm text-label-sm font-semibold text-secondary">
+                            To
+                            <input
+                              className="h-11 min-w-0 rounded-lg border border-surface-container-highest bg-surface-container-low px-2 font-body-md text-body-md text-on-surface focus:border-primary-container focus:outline-none focus:ring-1 focus:ring-primary-container"
+                              min={startDate || today}
+                              onChange={(event) => setEndDate(event.target.value)}
+                              type="date"
+                              value={endDate}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <button
+                            className="font-label-sm text-label-sm font-semibold text-secondary underline-offset-4 hover:text-on-surface hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container"
+                            onClick={() => {
+                              setStartDate("");
+                              setEndDate("");
+                            }}
+                            type="button"
+                          >
+                            Clear dates
+                          </button>
+                          <button
+                            className="rounded-lg bg-primary-container px-4 py-2 font-label-sm text-label-sm font-semibold text-on-primary transition-colors hover:bg-primary-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2"
+                            onClick={() => setIsDatePickerOpen(false)}
+                            type="button"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
 
                   <ButtonLink
                     className="w-full whitespace-nowrap md:w-auto"
-                    href="/preferences"
+                    href={{
+                      pathname: "/preferences",
+                      query: {
+                        ...(destination.trim()
+                          ? { destination: destination.trim() }
+                          : {}),
+                        ...(startDate && endDate ? { startDate, endDate } : {}),
+                      },
+                    }}
                   >
                     <span>Plan a trip</span>
                     <MaterialIcon

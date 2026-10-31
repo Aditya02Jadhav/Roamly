@@ -26,6 +26,7 @@ export type IconName =
   | "person"
   | "recommend"
   | "close"
+  | "delete"
   | "offline_pin"
   | "remove"
   | "shuffle"
@@ -140,6 +141,11 @@ const iconPaths: Record<IconName, SVGProps<SVGPathElement>[]> = {
   recommend: [
     {
       d: "m12 17.27 5.18 3.13-1.64-7.03L21 8.64l-7.19-.61L12 1.5 9.19 8.03 2 8.64l5.46 4.73-1.64 7.03L12 17.27Zm0-2.4-3.15 1.9.84-3.61-2.8-2.42 3.69-.32L12 7.04l1.42 3.38 3.69.32-2.8 2.42.84 3.61L12 14.87Z",
+    },
+  ],
+  delete: [
+    {
+      d: "M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z",
     },
   ],
   close: [

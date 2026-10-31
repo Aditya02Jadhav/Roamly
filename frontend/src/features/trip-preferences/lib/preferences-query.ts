@@ -5,6 +5,7 @@ export type TripPreferencesValues = {
   adults: number;
   children: number;
   budget: string;
+  totalBudget?: number | null;
   interests: string[];
   pace: string;
   transport: string;
@@ -23,6 +24,7 @@ export const defaultTripPreferences: TripPreferencesValues = {
   adults: 2,
   children: 0,
   budget: "moderate",
+  totalBudget: 70000,
   interests: ["Beaches", "Food and cafés", "Culture", "Hidden gems"],
   pace: "balanced",
   transport: "car-or-taxi",
@@ -56,6 +58,12 @@ const allowedTransport = [
   "car-or-taxi",
   "mixed-transit",
 ];
+const dailyBudgetMidpoints: Record<string, number> = {
+  "budget-friendly": 2250,
+  moderate: 5000,
+  comfort: 11000,
+  premium: 20000,
+};
 
 function getString(
   params: TripPreferencesSearchParams,
@@ -111,6 +119,37 @@ export function parseTripPreferences(
   const requestedFlexibleDates = getString(params, "flexibleDates");
   const requestedInterests = getString(params, "interests");
   const destination = getString(params, "destination")?.trim();
+  const budget =
+    requestedBudget && allowedBudgets.includes(requestedBudget)
+      ? requestedBudget
+      : defaultTripPreferences.budget;
+  const tripDays = Math.max(
+    1,
+    Math.round(
+      (new Date(`${endDate}T00:00:00Z`).getTime() -
+        new Date(`${startDate}T00:00:00Z`).getTime()) /
+        86_400_000,
+    ) + 1,
+  );
+  const adults = getCount(
+    getString(params, "adults"),
+    defaultTripPreferences.adults,
+    1,
+  );
+  const children = getCount(
+    getString(params, "children"),
+    defaultTripPreferences.children,
+    0,
+  );
+  const requestedTotalBudget = Number(getString(params, "totalBudget"));
+  const totalBudget =
+    Number.isSafeInteger(requestedTotalBudget) &&
+    requestedTotalBudget > 0 &&
+    requestedTotalBudget <= 60_000_000
+      ? requestedTotalBudget
+      : (dailyBudgetMidpoints[budget] ?? 5000) *
+        tripDays *
+        (adults + children);
 
   return {
     destination: destination
@@ -118,20 +157,10 @@ export function parseTripPreferences(
       : defaultTripPreferences.destination,
     startDate,
     endDate,
-    adults: getCount(
-      getString(params, "adults"),
-      defaultTripPreferences.adults,
-      1,
-    ),
-    children: getCount(
-      getString(params, "children"),
-      defaultTripPreferences.children,
-      0,
-    ),
-    budget:
-      requestedBudget && allowedBudgets.includes(requestedBudget)
-        ? requestedBudget
-        : defaultTripPreferences.budget,
+    adults,
+    children,
+    budget,
+    totalBudget,
     interests: requestedInterests
       ? [...new Set(requestedInterests.split("|"))].filter((interest) =>
           allowedInterests.includes(interest),
@@ -164,6 +193,9 @@ export function serializeTripPreferences(
   params.set("adults", String(preferences.adults));
   params.set("children", String(preferences.children));
   params.set("budget", preferences.budget);
+  if (preferences.totalBudget) {
+    params.set("totalBudget", String(preferences.totalBudget));
+  }
   params.set("interests", preferences.interests.join("|"));
   params.set("pace", preferences.pace);
   params.set("transport", preferences.transport);

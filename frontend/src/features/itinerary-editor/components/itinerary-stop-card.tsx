@@ -17,10 +17,11 @@ type ItineraryStopCardProps = {
   canMoveDown: boolean;
   stop: ItineraryStop;
   active: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRemove: () => void;
-  onRename: (title: string) => void;
+  readOnly?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onRemove?: () => void;
+  onRename?: (title: string) => void;
 };
 
 export function ItineraryStopCard({
@@ -28,6 +29,7 @@ export function ItineraryStopCard({
   canMoveDown,
   stop,
   active,
+  readOnly = false,
   onMoveUp,
   onMoveDown,
   onRemove,
@@ -39,7 +41,7 @@ export function ItineraryStopCard({
   function saveTitle() {
     const trimmedTitle = title.trim();
     if (trimmedTitle) {
-      onRename(trimmedTitle);
+      onRename?.(trimmedTitle);
     } else {
       setTitle(stop.title);
     }
@@ -118,6 +120,7 @@ export function ItineraryStopCard({
         </div>
       </div>
 
+      {!readOnly && onMoveUp && onMoveDown && onRemove && onRename ? (
       <div className="mt-space-sm flex items-center justify-between border-t border-surface-container-highest/60 pt-space-xs text-secondary">
         <div className="flex items-center gap-1">
           <button
@@ -158,6 +161,7 @@ export function ItineraryStopCard({
           </button>
         </div>
       </div>
+      ) : null}
     </article>
   );
 }

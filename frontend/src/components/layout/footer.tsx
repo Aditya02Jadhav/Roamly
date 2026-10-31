@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function Footer() {
   return (
     <footer className="w-full border-t border-surface-container-highest bg-surface-container-lowest py-space-xl">
@@ -16,29 +18,23 @@ export function Footer() {
             aria-label="Footer navigation"
             className="flex flex-wrap items-center justify-center gap-space-lg"
           >
-            <a
+            <Link
               className="font-body-sm text-body-sm text-secondary transition-colors hover:text-on-surface"
-              href="#about"
+              href="/about"
             >
               About
-            </a>
-            <a
+            </Link>
+            <Link
               className="font-body-sm text-body-sm text-secondary transition-colors hover:text-on-surface"
-              href="#contact"
+              href="/contact"
             >
               Contact
-            </a>
+            </Link>
             <a
               className="font-body-sm text-body-sm text-secondary transition-colors hover:text-on-surface"
               href="#privacy"
             >
               Privacy
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-secondary transition-colors hover:text-on-surface"
-              href="#terms"
-            >
-              Terms
             </a>
           </nav>
         </div>
@@ -49,4 +45,3 @@ export function Footer() {
     </footer>
   );
 }
-

@@ -18,6 +18,8 @@ import {
 type ItinerarySelectionProps = {
   preferences: TripPreferencesValues;
   initialSelectedPlan?: string;
+  tripId?: string;
+  options?: ItineraryOption[];
 };
 
 const budgetLabels: Record<string, string> = {
@@ -45,22 +47,26 @@ function formatDate(dateValue: string) {
 export function ItinerarySelection({
   preferences,
   initialSelectedPlan = "balanced",
+  tripId,
+  options = itineraryOptions,
 }: ItinerarySelectionProps) {
   const [selectedPlan, setSelectedPlan] = useState(initialSelectedPlan);
   const tripDays = getTripDays(preferences.startDate, preferences.endDate);
   const selectedOption = useMemo(
     () =>
-      itineraryOptions.find((option) => option.id === selectedPlan) ??
-      itineraryOptions[0],
-    [selectedPlan],
+      options.find((option) => option.id === selectedPlan) ??
+      options[0],
+    [options, selectedPlan],
   );
   const preferencesQuery = serializeTripPreferences(preferences);
 
   function getCustomizeHref(option: ItineraryOption) {
     const params = new URLSearchParams(preferencesQuery);
     params.set("plan", option.id);
-    return `/trips/new/explore?${params.toString()}`;
+    const basePath = tripId ? `/trips/${tripId}/explore` : "/trips/new/explore";
+    return `${basePath}?${params.toString()}`;
   }
+
 
   return (
     <>
@@ -139,8 +145,13 @@ export function ItinerarySelection({
                     className="text-[18px] text-secondary"
                     name="account_balance_wallet"
                   />
-                  <dt className="sr-only">Daily budget target</dt>
-                  <dd>Target: {budgetLabels[preferences.budget]} / person</dd>
+                  <dt className="sr-only">Trip budget target</dt>
+                  <dd>
+                    {preferences.totalBudget
+                      ? `Total: ₹${preferences.totalBudget.toLocaleString("en-IN")} · `
+                      : ""}
+                    {budgetLabels[preferences.budget]} / person / day
+                  </dd>
                 </div>
               </dl>
               <Link
@@ -169,7 +180,7 @@ export function ItinerarySelection({
             aria-label="Itinerary options"
             className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3"
           >
-            {itineraryOptions.map((option) => (
+            {options.map((option) => (
               <ItineraryCard
                 days={tripDays}
                 key={option.id}

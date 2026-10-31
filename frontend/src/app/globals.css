@@ -42,3 +42,63 @@ body {
     scroll-behavior: auto;
   }
 }
+
+.contact-shuffle-card {
+  animation: contact-card-shuffle 15s ease-in-out infinite;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+.contact-shuffle-card:nth-child(2) {
+  animation-delay: -5s;
+}
+
+.contact-shuffle-card:nth-child(3) {
+  animation-delay: -10s;
+}
+
+@keyframes contact-card-shuffle {
+  0%,
+  24% {
+    z-index: 3;
+    opacity: 1;
+    transform: translate3d(0, 0, 56px) rotate(-3deg) rotateY(0) scale(1);
+  }
+  30% {
+    z-index: 4;
+    opacity: 1;
+    transform: translate3d(-108px, -118px, 170px) rotate(-14deg) rotateY(18deg)
+      scale(0.96);
+  }
+  38% {
+    z-index: 0;
+    opacity: 0.88;
+    transform: translate3d(-126px, -38px, -300px) rotate(-10deg) rotateY(-12deg)
+      scale(0.88);
+  }
+  58% {
+    z-index: 0;
+    opacity: 0.88;
+    transform: translate3d(-26px, -38px, -300px) rotate(-10deg) rotateY(-12deg)
+      scale(0.88);
+  }
+  68% {
+    z-index: 2;
+    opacity: 1;
+    transform: translate3d(-20px, -12px, 322px) rotate(10deg) rotateY(8deg)
+      scale(1.04);
+  }
+  76%,
+  100% {
+    z-index: 3;
+    opacity: 1;
+    transform: translate3d(0, 0, 36px) rotate(-3deg) rotateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-shuffle-card {
+    animation: none;
+  }
+}

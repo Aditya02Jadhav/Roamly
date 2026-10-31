@@ -1,18 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
-import { ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ChoiceIndicator } from "@/components/ui/choice-indicator";
 import { MaterialIcon } from "@/components/ui/material-icon";
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
+import { AuthModal } from "@/components/shared/auth-modal";
 import { TripStepProgress } from "@/components/shared/trip-step-progress";
 import {
   defaultTripPreferences,
-  serializeTripPreferences,
   type TripPreferencesValues,
 } from "@/features/trip-preferences/lib/preferences-query";
+import {
+  ApiError,
+  createDraftTrip,
+  getStoredToken,
+  setStoredToken,
+} from "@/lib/api";
+
 
 const popularDestinations = [
   { name: "Goa", value: "Goa, India" },
@@ -26,6 +34,9 @@ const budgetOptions = [
     id: "budget-friendly",
     title: "Budget-friendly",
     icon: "account_balance_wallet",
+    minDaily: 1500,
+    maxDaily: 3000,
+    midpointDaily: 2250,
     price: "₹1,500 – ₹3,000",
     description: "Hostels, street eats, local buses",
   },
@@ -33,6 +44,9 @@ const budgetOptions = [
     id: "moderate",
     title: "Moderate",
     icon: "coffee",
+    minDaily: 3000,
+    maxDaily: 7000,
+    midpointDaily: 5000,
     price: "₹3,000 – ₹7,000",
     description: "Boutique stays, nice cafés, cabs",
   },
@@ -40,6 +54,9 @@ const budgetOptions = [
     id: "comfort",
     title: "Comfort",
     icon: "recommend",
+    minDaily: 7000,
+    maxDaily: 15000,
+    midpointDaily: 11000,
     price: "₹7,000 – ₹15,000",
     description: "4-star hotels, private drivers, tours",
   },
@@ -47,6 +64,9 @@ const budgetOptions = [
     id: "premium",
     title: "Premium",
     icon: "auto_awesome",
+    minDaily: 15000,
+    maxDaily: 25000,
+    midpointDaily: 20000,
     price: "₹15,000+",
     description: "Luxury resorts, fine dining, VIP pass",
   },
@@ -120,19 +140,19 @@ const transportOptions = [
 ] as const;
 
 const selectionCardClasses =
-  "rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2";
+  "rounded-2xl border text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2 hover:shadow-sm";
 const selectionCardSelectedClasses =
-  "border-2 border-primary-container bg-surface-selected";
+  "border-2 border-primary-container bg-surface-selected shadow-sm";
 const selectionCardUnselectedClasses =
-  "border-surface-container-highest bg-surface-container-lowest hover:border-on-surface";
+  "border-surface-container-highest bg-surface-container-lowest hover:border-outline hover:bg-surface/50";
 const selectionChipClasses =
-  "inline-flex h-9 items-center gap-1.5 rounded-full border px-4 font-label-md text-label-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2";
+  "inline-flex h-9 items-center gap-1.5 rounded-full border px-4 font-label-md text-label-md transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2 active:scale-95";
 const selectionChipSelectedClasses =
-  "border-primary-container bg-surface-selected font-semibold text-primary";
+  "border-primary-container bg-surface-selected font-semibold text-primary shadow-xs";
 const selectionChipUnselectedClasses =
-  "border-surface-container-highest bg-surface-container-lowest font-medium text-secondary hover:border-on-surface hover:text-on-surface";
+  "border-surface-container-highest bg-surface-container-lowest font-medium text-secondary hover:border-on-surface hover:text-on-surface hover:bg-surface/50";
 const selectionCardLayoutClasses =
-  `grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-3 ${selectionCardClasses} p-4`;
+  `grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-3.5 ${selectionCardClasses} p-4 sm:p-5`;
 
 function SectionIntro({
   title,
@@ -176,6 +196,29 @@ function getTripDuration(startDate: string, endDate: string) {
   return `${nights + 1} days, ${nights} nights`;
 }
 
+function getTripDays(startDate: string, endDate: string) {
+  if (!startDate || !endDate) {
+    return 1;
+  }
+
+  const start = new Date(`${startDate}T00:00:00Z`).getTime();
+  const end = new Date(`${endDate}T00:00:00Z`).getTime();
+  const days = Math.round((end - start) / 86_400_000) + 1;
+  return Number.isFinite(days) ? Math.max(1, days) : 1;
+}
+
+function getBudgetTier(totalBudget: number, days: number, travellers: number) {
+  const dailyPerPerson = totalBudget / (days * travellers);
+  return (
+    budgetOptions.find((option) => dailyPerPerson <= option.maxDaily)?.id ??
+    "premium"
+  );
+}
+
+function formatRupees(amount: number) {
+  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+}
+
 type TripPreferencesProps = {
   initialPreferences: TripPreferencesValues;
 };
@@ -183,6 +226,7 @@ type TripPreferencesProps = {
 export default function TripPreferences({
   initialPreferences,
 }: TripPreferencesProps) {
+  const router = useRouter();
   const [destination, setDestination] = useState(
     initialPreferences.destination || defaultTripPreferences.destination,
   );
@@ -193,24 +237,101 @@ export default function TripPreferences({
   );
   const [adults, setAdults] = useState(initialPreferences.adults);
   const [children, setChildren] = useState(initialPreferences.children);
-  const [budget, setBudget] = useState(initialPreferences.budget);
+  const initialTripDays = getTripDays(
+    initialPreferences.startDate,
+    initialPreferences.endDate,
+  );
+  const initialTravellerCount =
+    initialPreferences.adults + initialPreferences.children;
+  const initialBudgetOption =
+    budgetOptions.find((option) => option.id === initialPreferences.budget) ??
+    budgetOptions[1];
+  const [totalBudget, setTotalBudget] = useState(
+    initialPreferences.totalBudget ??
+      initialBudgetOption.midpointDaily *
+        initialTripDays *
+        initialTravellerCount,
+  );
   const [selectedInterests, setSelectedInterests] = useState<string[]>(
     initialPreferences.interests,
   );
   const [pace, setPace] = useState(initialPreferences.pace);
   const [transport, setTransport] = useState(initialPreferences.transport);
-  const preferencesHref = `/trips/new?${serializeTripPreferences({
-    destination,
-    startDate,
-    endDate,
-    adults,
-    children,
-    budget,
-    interests: selectedInterests,
-    pace,
-    transport,
-    flexibleDates,
-  })}`;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [requiresLogin, setRequiresLogin] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  const tripDays = getTripDays(startDate, endDate);
+  const travellerCount = adults + children;
+  const minimumTotalBudget =
+    budgetOptions[0].minDaily * tripDays * travellerCount;
+  const maximumTotalBudget =
+    budgetOptions[budgetOptions.length - 1].maxDaily *
+    tripDays *
+    travellerCount;
+  const step = 250 * tripDays * travellerCount;
+  const selectedTotalBudget = Math.max(
+    minimumTotalBudget,
+    Math.min(
+      maximumTotalBudget,
+      minimumTotalBudget +
+        Math.round((totalBudget - minimumTotalBudget) / step) * step,
+    ),
+  );
+  const budget = getBudgetTier(
+    selectedTotalBudget,
+    tripDays,
+    travellerCount,
+  );
+
+  async function handleSubmit() {
+    if (!destination.trim()) {
+      setErrorMessage("Please enter a destination.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setRequiresLogin(false);
+
+    try {
+      const trip = await createDraftTrip({
+        destination: destination.trim(),
+        startDate,
+        endDate,
+        flexibleDates,
+        adults,
+        children,
+        budget,
+        totalBudget: selectedTotalBudget,
+        interests: selectedInterests,
+        pace,
+        transport,
+      });
+
+      router.push(`/trips/${trip.id}`);
+    } catch (err: unknown) {
+      const isFetchFailure = err instanceof TypeError;
+      const needsLogin =
+        !getStoredToken() ||
+        isFetchFailure ||
+        (err instanceof ApiError && err.status === 401);
+      if (isFetchFailure || (err instanceof ApiError && err.status === 401)) {
+        setStoredToken(null);
+      }
+      setRequiresLogin(needsLogin);
+      setErrorMessage(
+        needsLogin
+          ? "Login required to continue. Your trip preferences will be kept."
+          : err instanceof Error
+            ? err.message
+            : "Could not create your trip. Please try again.",
+      );
+      setIsSubmitting(false);
+    }
+  }
+
 
   function toggleInterest(interest: string) {
     setSelectedInterests((current) =>
@@ -227,8 +348,8 @@ export default function TripPreferences({
       <main className="min-h-screen w-full bg-surface pt-16">
         <TripStepProgress currentStep={1} />
         <div className="w-full bg-surface-container-low py-8 md:py-12">
-          <div className="mx-auto max-w-[860px] px-gutter-mobile sm:px-gutter">
-            <header className="mx-auto mb-8 max-w-2xl text-center">
+          <div className="mx-auto max-w-5xl xl:max-w-6xl px-gutter-mobile sm:px-gutter">
+            <header className="mx-auto mb-8 max-w-3xl text-center">
               <h1 className="mb-2 text-[32px] font-bold leading-[1.2] tracking-tight text-on-surface sm:text-[36px] md:text-display-hero">
                 Let’s plan your next adventure
               </h1>
@@ -238,7 +359,7 @@ export default function TripPreferences({
               </p>
             </header>
 
-            <div className="space-y-8 rounded-2xl border border-surface-container-highest bg-surface-container-lowest p-5 shadow-sm sm:space-y-9 sm:p-8 md:p-10">
+            <div className="space-y-8 rounded-3xl border border-surface-container-highest/80 bg-surface-container-lowest p-6 shadow-xl shadow-black/[0.03] sm:space-y-10 sm:p-8 md:p-12">
               <section aria-labelledby="destination-heading" className="space-y-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-1">
                   <label
@@ -263,7 +384,7 @@ export default function TripPreferences({
                   />
                   <input
                     autoComplete="off"
-                    className={`h-[52px] w-full rounded-xl border border-surface-container-highest bg-surface-container-lowest pl-12 ${
+                    className={`h-[56px] w-full rounded-2xl border border-surface-container-highest bg-surface-container-lowest pl-12 ${
                       destination.trim() ? "pr-12" : "pr-4"
                     } font-body-lg text-body-lg text-on-surface transition-all placeholder:text-secondary focus:border-on-surface focus:outline-none focus:ring-1 focus:ring-on-surface`}
                     id="destination-input"
@@ -323,7 +444,7 @@ export default function TripPreferences({
               >
                 <div className="space-y-3">
                   <SectionIntro title="When are you travelling?" />
-                  <div className="flex min-h-[76px] items-center rounded-xl border border-surface-container-highest bg-surface-container-lowest p-3.5 transition-colors hover:border-secondary">
+                  <div className="flex min-h-[76px] items-center rounded-2xl border border-surface-container-highest bg-surface-container-lowest p-4 transition-all hover:border-outline hover:shadow-xs">
                     <div className="min-w-0 flex-1">
                       <div className="grid grid-cols-1 items-center gap-y-1 min-[420px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] min-[420px]:gap-y-0">
                         <span className="font-label-sm text-label-sm text-secondary min-[420px]:hidden">
@@ -386,7 +507,7 @@ export default function TripPreferences({
 
                 <div className="space-y-3">
                   <SectionIntro title="Who’s travelling?" />
-                  <div className="space-y-3 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-3.5">
+                  <div className="space-y-3 rounded-2xl border border-surface-container-highest bg-surface-container-lowest p-4 transition-all hover:border-outline hover:shadow-xs">
                     <QuantityStepper
                       description="Ages 13 or above"
                       label="Adults"
@@ -413,13 +534,65 @@ export default function TripPreferences({
 
               <section aria-labelledby="budget-heading" className="space-y-3.5">
                 <SectionIntro
-                  description="Estimated daily spending per person, excluding airfare"
+                  description="Set a total trip budget for everyone, excluding airfare. The tiers below also guide your daily travel style."
                   id="budget-heading"
                   title="What’s your budget?"
                 />
+                <div className="space-y-3 rounded-2xl border border-surface-container-highest bg-surface-container-lowest p-5 transition-all hover:border-outline hover:shadow-xs">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <label
+                      className="font-label-md text-label-md font-semibold text-on-surface"
+                      htmlFor="total-trip-budget"
+                    >
+                      Total trip budget
+                    </label>
+                    <output
+                      className="font-headline-sm text-headline-sm font-bold text-primary-container"
+                      htmlFor="total-trip-budget"
+                      id="total-trip-budget-value"
+                    >
+                      {formatRupees(selectedTotalBudget)}
+                    </output>
+                  </div>
+                  <input
+                    aria-label="Total trip budget in rupees"
+                    aria-valuetext={`${formatRupees(selectedTotalBudget)} total trip budget`}
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full accent-primary-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-4"
+                    id="total-trip-budget"
+                    max={maximumTotalBudget}
+                    min={minimumTotalBudget}
+                    onChange={(event) => {
+                      const amount = Number(event.target.value);
+                      setTotalBudget(amount);
+                    }}
+                    step={step}
+                    style={{
+                      background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${
+                        ((selectedTotalBudget - minimumTotalBudget) /
+                          (maximumTotalBudget - minimumTotalBudget)) *
+                        100
+                      }%, var(--color-border) ${
+                        ((selectedTotalBudget - minimumTotalBudget) /
+                          (maximumTotalBudget - minimumTotalBudget)) *
+                        100
+                      }%, var(--color-border) 100%)`,
+                    }}
+                    type="range"
+                    value={selectedTotalBudget}
+                  />
+                  <div className="flex justify-between font-label-sm text-label-sm text-secondary">
+                    <span>{formatRupees(minimumTotalBudget)}</span>
+                    <span>{formatRupees(maximumTotalBudget)}</span>
+                  </div>
+                  <p className="font-body-sm text-body-sm text-secondary">
+                    {tripDays} {tripDays === 1 ? "day" : "days"} ·{" "}
+                    {travellerCount}{" "}
+                    {travellerCount === 1 ? "traveller" : "travellers"}
+                  </p>
+                </div>
                 <div
                   aria-label="Choose a daily budget"
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                  className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4"
                   role="group"
                 >
                   {budgetOptions.map((option) => {
@@ -431,7 +604,11 @@ export default function TripPreferences({
                           selected ? selectionCardSelectedClasses : selectionCardUnselectedClasses
                         }`}
                         key={option.id}
-                        onClick={() => setBudget(option.id)}
+                        onClick={() => {
+                          setTotalBudget(
+                            option.midpointDaily * tripDays * travellerCount,
+                          );
+                        }}
                         type="button"
                       >
                         <span
@@ -457,7 +634,7 @@ export default function TripPreferences({
                               selected ? "text-primary" : "text-on-surface"
                             }`}
                           >
-                            {option.price}
+                            {option.price} / person / day
                           </span>
                           <span className="block font-body-sm text-body-sm text-secondary">
                             {option.description}
@@ -523,7 +700,7 @@ export default function TripPreferences({
                 />
                 <div
                   aria-label="Choose your travel pace"
-                  className="grid grid-cols-1 gap-3 md:grid-cols-3"
+                  className="grid grid-cols-1 gap-3.5 md:grid-cols-3"
                   role="group"
                 >
                   {paceOptions.map((option) => {
@@ -585,7 +762,7 @@ export default function TripPreferences({
                 />
                 <div
                   aria-label="Choose a mode of transport"
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                  className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4"
                   role="group"
                 >
                   {transportOptions.map((option) => {
@@ -628,7 +805,33 @@ export default function TripPreferences({
                 </div>
               </section>
 
-              <div className="flex flex-col items-stretch justify-between gap-5 border-t border-surface-container-highest pt-6 md:flex-row md:items-center">
+              {errorMessage && (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-status-error/20 bg-status-error/10 p-4 text-status-error"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <MaterialIcon
+                      className="shrink-0 text-[20px]"
+                      name="info"
+                    />
+                    <span className="font-body-sm text-body-sm font-medium">
+                      {errorMessage}
+                    </span>
+                  </span>
+                  {requiresLogin ? (
+                    <button
+                      className="shrink-0 rounded-lg bg-primary-container px-4 py-2 font-label-sm text-label-sm font-semibold text-on-primary transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2"
+                      onClick={() => setIsLoginModalOpen(true)}
+                      type="button"
+                    >
+                      Log in
+                    </button>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="flex flex-col items-stretch justify-between gap-5 border-t border-surface-container-highest/80 pt-8 md:flex-row md:items-center">
                 <div className="flex max-w-md items-center gap-2.5">
                   <MaterialIcon
                     className="shrink-0 text-[20px] text-secondary"
@@ -639,13 +842,24 @@ export default function TripPreferences({
                     fine-tune every stop later on the interactive map.
                   </p>
                 </div>
-                <ButtonLink
+                <Button
                   className="h-12 w-full shrink-0 gap-2 rounded-xl px-8 shadow-sm active:scale-[0.99] md:w-auto"
-                  href={preferencesHref}
+                  disabled={isSubmitting}
+                  onClick={handleSubmit}
+                  type="button"
                 >
-                  <span>Create my itinerary</span>
-                  <MaterialIcon className="text-[18px]" name="arrow_forward" />
-                </ButtonLink>
+                  {isSubmitting ? (
+                    <>
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      <span>Generating options...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Create my itinerary</span>
+                      <MaterialIcon className="text-[18px]" name="arrow_forward" />
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
 
@@ -677,6 +891,14 @@ export default function TripPreferences({
       </main>
 
       <Footer />
+      <AuthModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSuccess={() => {
+          setIsLoginModalOpen(false);
+          void handleSubmit();
+        }}
+      />
     </>
   );
 }
